@@ -1,0 +1,20 @@
+{
+  "name": "doc-viewer-sidecar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Antigravity side-pane document and file viewer",
+  "dependencies": {
+    "docx-preview": "^0.4.1",
+    "fast-xml-parser": "^5.12.1",
+    "highlight.js": "^11.12.0",
+    "js-yaml": "^5.5.0",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "marked": "^18.2.1",
+    "modern-screenshot": "^4.7.0",
+    "pdfjs-dist": "^6.5.438",
+    "smol-toml": "^1.3.1",
+    "xlsx": "^0.18.5"
+  }
+}

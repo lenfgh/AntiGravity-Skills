@@ -1,0 +1,12 @@
+{
+  "ProjectAlpha": {
+    "root": "E:/Project/ProjectAlpha",
+    "folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+    "studio_id": "YOUR_02_STUDIO_GOOGLE_DOC_ID",
+    "priority_globs": [
+      "pyproject.toml",
+      "src/**/*.py",
+      "tests/**/*.py"
+    ]
+  }
+}

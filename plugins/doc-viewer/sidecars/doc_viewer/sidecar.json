@@ -1,0 +1,19 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Document Viewer",
+  "description": "Side-pane document and file viewer supporting DOCX, PDF, XLSX/CSV, PPTX, EPUB, ODT/ODP, RTF, Markdown, Jupyter Notebooks, SQLite, archives, media, fonts, and source code.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Document Viewer",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Document Viewer",
+        "file_extensions": [".docx", ".doc", ".odt", ".rtf", ".xlsx", ".xls", ".xlsm", ".xlsb", ".ods", ".pptx", ".odp", ".epub", ".ipynb", ".sqlite", ".sqlite3", ".db", ".zip"]
+      }
+    ]
+  }
+}

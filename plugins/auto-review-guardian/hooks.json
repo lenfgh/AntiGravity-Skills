@@ -1,0 +1,17 @@
+{
+  "auto-review-guardian": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_file|write_to_file|edit_file|replace_file_content|multi_replace_file_content|call_mcp_tool|mcp_.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 scripts/antigravity_guardian.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

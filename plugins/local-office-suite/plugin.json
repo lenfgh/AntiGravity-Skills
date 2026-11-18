@@ -1,0 +1,18 @@
+{
+  "name": "local-office-suite",
+  "displayName": "Local Office Suite",
+  "version": "1.1.0",
+  "logo": "assets/logo.svg",
+  "description": "Production-grade local PPTX (PptxGenJS + OOXML XSD + PowerPoint COM QA), DOCX (25+ OOXML redline/comment/audit tools), XLSX financial/scientific modeling (Excel COM formula recalculation audit), PDF AcroForms, and Anti-Slop editorial standards.",
+  "suggestedPrompts": [
+    "用 pptx skill 生成一份带主题配色、原生图表并通过验证自检的汇报 PPTX",
+    "生成或修订本地 DOCX 文档并用 render_docx.py 逐页渲染检查版式",
+    "按 Outputs-Assumptions-Builds 规范构建带公式自检的本地 XLSX 模型表格"
+  ],
+  "author": {
+    "name": "lenfgh",
+    "url": "https://github.com/lenfgh"
+  },
+  "homepage": "https://github.com/lenfgh/AntiGravity-Skills",
+  "repository": "https://github.com/lenfgh/AntiGravity-Skills"
+}

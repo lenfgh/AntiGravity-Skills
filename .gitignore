@@ -1,0 +1,34 @@
+# Node / Sidecar dependencies
+node_modules/
+npm-debug.log*
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Temporary working & QA render directories
+_tmp/
+.tmp/
+_work/
+.work/
+_tmp_render/
+
+# Local runtime logs & user-private configs
+*.jsonl
+*.log
+.env
+.env.*
+!.env.example
+projects.json
+REGISTRY.md
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

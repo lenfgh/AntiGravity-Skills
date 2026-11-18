@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Viewer</title>
+  <script src="/preload.js"></script>
+  <script src="/vendor/jszip.min.js"></script>
+  <script src="/vendor/docx-preview.min.js"></script>
+  <script src="/vendor/modern-screenshot.js"></script>
+  <link rel="stylesheet" href="/vendor/pdfjs/pdf_viewer.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="topbar-row">
+        <button id="btn-drawer" type="button" class="btn btn-primary-ghost" title="浏览工作区文件 (Ctrl+O)">
+          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.17a1.5 1.5 0 0 1 1.06.44l.83.83c.14.14.33.23.53.23H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V3.5z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span>文件</span>
+        </button>
+
+        <button id="btn-snip" type="button" class="btn hidden" title="像截屏一样框选区域添加修改请求 (Alt+S)">
+          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5V3.5a1 1 0 0 1 1-1H5M11 2.5h1.5a1 1 0 0 1 1 1V5M13.5 11v1.5a1 1 0 0 1-1 1H11M5 13.5H3.5a1 1 0 0 1-1-1V11M5.5 5.5h5v5h-5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span>框选</span>
+        </button>
+
+        <div class="file-pill" id="file-pill" title="点击输入本地文件路径">
+          <span id="kind-badge" class="badge badge-empty">DOC</span>
+          <span id="file-title" class="file-title">未打开文件</span>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="btn-path-toggle" type="button" class="icon-btn" title="输入本地路径 / 打开任意文件">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5L9.5 6.5M5.5 7l-1.8 1.8a2.12 2.12 0 1 0 3 3L8.5 10M7.5 6l1.8-1.8a2.12 2.12 0 1 1 3 3L10.5 9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <button id="btn-pick-file" type="button" class="icon-btn" title="选择本地文件（或直接拖拽到此窗口）">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10V2.5M5 5.5 8 2.5l3 3M2.5 10.5v2A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5v-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="btn-reveal" type="button" class="icon-btn hidden" title="在资源管理器中定位">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="btn-refresh" type="button" class="icon-btn hidden" title="重新加载当前文件">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.65M13.5 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="path-bar" class="path-bar hidden">
+        <input id="path-input" type="text" placeholder="输入本地文件路径，例如 E:\Docs\report.docx 或工作区相对路径..." autocomplete="off">
+        <button id="btn-path-go" type="button" class="btn btn-sm">打开</button>
+      </div>
+
+      <div id="subbar" class="subbar hidden"></div>
+    </header>
+
+    <input id="native-file-input" type="file" class="hidden">
+
+    <main id="stage" class="stage">
+      <aside id="drawer" class="drawer hidden" aria-label="文件列表">
+        <div class="drawer-head">
+          <input id="tree-search" type="search" placeholder="搜索文件名或路径..." autocomplete="off">
+          <button id="btn-tree-refresh" type="button" class="icon-btn" title="刷新工作区目录">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.65M13.5 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="btn-drawer-close" type="button" class="icon-btn" title="关闭面板">✕</button>
+        </div>
+        <div id="tree-filters" class="chip-row">
+          <button type="button" class="chip active" data-cat="all">全部</button>
+          <button type="button" class="chip" data-cat="docs">文档</button>
+          <button type="button" class="chip" data-cat="sheet">表格</button>
+          <button type="button" class="chip" data-cat="slide">幻灯片</button>
+          <button type="button" class="chip" data-cat="data">数据/笔记</button>
+          <button type="button" class="chip" data-cat="media">媒体</button>
+          <button type="button" class="chip" data-cat="code">代码</button>
+        </div>
+        <div id="tree-meta" class="tree-meta"></div>
+        <div id="tree-crumbs" class="tree-crumbs"></div>
+        <div id="tree-list" class="tree-list"></div>
+      </aside>
+
+      <div id="welcome" class="welcome">
+        <div class="welcome-card">
+          <div class="welcome-icon">📄</div>
+          <h2>侧边栏文档与文件预览器</h2>
+          <p class="muted">支持在当前侧边栏直接打开和浏览以下常见格式：</p>
+          <div class="fmt-grid">
+            <span><b>文档</b>：DOCX (版式+阅读)、PDF、ODT、RTF、DOC</span>
+            <span><b>表格</b>：XLSX、XLS、XLSM、ODS、CSV、TSV</span>
+            <span><b>演示/电子书</b>：PPTX、ODP、EPUB</span>
+            <span><b>笔记/数据</b>：IPYNB、JSON/JSONL、YAML、TOML、XML、SQLite</span>
+            <span><b>网页/矢量</b>：Markdown、HTML、SVG</span>
+            <span><b>媒体/包/代码</b>：图片、音视频、字体、ZIP/WHL/JAR、源码与日志</span>
+          </div>
+          <div class="welcome-actions">
+            <button id="btn-welcome-browse" type="button" class="btn btn-primary">浏览工作区文件</button>
+            <button id="btn-welcome-pick" type="button" class="btn">选择本地文件</button>
+          </div>
+          <p class="drop-tip">提示：也可以直接把电脑上的任意文件拖拽到这里，或在上方输入本地路径。</p>
+        </div>
+      </div>
+
+      <div id="viewer" class="viewer hidden"></div>
+    </main>
+
+    <div id="selection-bar" class="selection-bar hidden">
+      <span id="selection-preview" class="selection-preview"></span>
+      <button id="btn-sel-queue" type="button" class="btn btn-sm btn-primary">+ 加入 Request 队列</button>
+      <button id="btn-sel-send" type="button" class="btn btn-sm">直接发给 Agent</button>
+      <button id="btn-sel-copy" type="button" class="btn btn-sm">复制</button>
+    </div>
+
+    <div id="snip-layer" class="snip-layer hidden" data-dv-ignore="1">
+      <div id="snip-hint" class="snip-hint">按住左键拖拽框选文档任意区域（支持滚轮翻页，按 Esc 退出）</div>
+      <div id="snip-rect" class="snip-rect hidden"><span id="snip-dim" class="snip-dim"></span></div>
+    </div>
+
+    <div id="req-modal" class="req-modal hidden" data-dv-ignore="1">
+      <div class="req-dialog">
+        <div class="req-dialog-head">
+          <span id="req-modal-title" class="req-modal-title">添加修改请求</span>
+          <span id="req-modal-loc" class="badge"></span>
+          <span class="spacer"></span>
+          <button id="btn-req-cancel" type="button" class="icon-btn" title="取消">✕</button>
+        </div>
+        <div id="req-thumb-wrap" class="req-thumb-wrap hidden">
+          <img id="req-thumb" alt="框选区域截图">
+        </div>
+        <details id="req-quote-details" class="req-quote-details hidden">
+          <summary>提取到的选区文本（可展开/编辑）</summary>
+          <textarea id="req-quote-input" rows="3" placeholder="选区文本（可选）"></textarea>
+        </details>
+        <textarea id="req-note-input" rows="3" placeholder="输入针对该区域的修改要求或问题... (Ctrl+Enter 加入队列)"></textarea>
+        <div class="req-dialog-foot">
+          <label class="req-keep-chk"><input id="req-keep-snip" type="checkbox" checked> 保持框选模式以便继续标下一处</label>
+          <span class="spacer"></span>
+          <button id="btn-req-send-now" type="button" class="btn btn-sm">仅发送这一条</button>
+          <button id="btn-req-add" type="button" class="btn btn-sm btn-primary">加入队列</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="req-dock" class="req-dock hidden" data-dv-ignore="1">
+      <div id="req-queue-panel" class="req-queue-panel hidden">
+        <div class="req-queue-panel-head">
+          <span>已框选 / 引用的待发 Request</span>
+          <button id="btn-req-collapse" type="button" class="icon-btn" title="收起">▾</button>
+        </div>
+        <div id="req-queue-list" class="req-queue-list"></div>
+      </div>
+      <div class="req-dock-bar">
+        <button id="btn-req-toggle" type="button" class="btn btn-sm">
+          <span>待发队列</span>
+          <span id="req-count" class="req-count-badge">0</span>
+          <span id="req-chevron">▴</span>
+        </button>
+        <button id="btn-req-clear" type="button" class="btn btn-sm">清空</button>
+        <span class="spacer"></span>
+        <button id="btn-req-copy-all" type="button" class="btn btn-sm">📋 复制全部</button>
+        <button id="btn-req-send-all" type="button" class="btn btn-sm btn-primary">🚀 一次性发送</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" data-dv-ignore="1"></div>
+
+    <div id="drop-overlay" class="drop-overlay hidden">
+      <div class="drop-box">松开即可在侧边栏预览文件</div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

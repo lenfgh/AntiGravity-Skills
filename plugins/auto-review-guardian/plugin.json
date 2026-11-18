@@ -1,0 +1,18 @@
+{
+  "name": "auto-review-guardian",
+  "displayName": "Auto-Review Security Guardian",
+  "version": "1.0.0",
+  "logo": "assets/logo.svg",
+  "description": "Codex auto_review-style PreToolUse security guardrail: silently allows safe read-only commands, --help, active workspace edits, and routine GDocs/GDrive syncs while requiring confirmation on destructive, credential, outbound-mail, or config-tampering operations.",
+  "suggestedPrompts": [
+    "Check which commands and paths are currently protected by Auto-Review Guardian",
+    "Run the Auto-Review Guardian unit test suite to verify policy rules",
+    "Customize guardian_policy.json to add my workspace root to allowed_write_roots"
+  ],
+  "author": {
+    "name": "lenfgh",
+    "url": "https://github.com/lenfgh"
+  },
+  "homepage": "https://github.com/lenfgh/AntiGravity-Skills",
+  "repository": "https://github.com/lenfgh/AntiGravity-Skills"
+}

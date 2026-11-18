@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "doc_viewer_mcp": {
+      "command": "agy-node",
+      "args": [
+        "sidecars/doc_viewer/mcp_entry.mjs"
+      ]
+    }
+  }
+}

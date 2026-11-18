@@ -1,0 +1,140 @@
+{
+  "version": 10,
+  "audit_log_path": "~/.gemini/antigravity/logs/guardian_audit.jsonl",
+  "allowed_write_roots": [
+    "E:/Project",
+    "D:/",
+    "~/.gemini/config/plugins",
+    "~/.gemini/config/sidecars",
+    "~/.gemini/config/skills",
+    "~/.gemini/config/rules",
+    "~/.codex/skills",
+    "~/.codex/plugins",
+    "~/.claude/skills",
+    "~/.claude/plugins",
+    "~/.agents/skills"
+  ],
+  "protected_exact_filenames": [
+    "antigravity_guardian.py",
+    "guardian_policy.json",
+    "hooks.json",
+    "mcp_config.json",
+    "guardian_audit.jsonl"
+  ],
+  "protected_path_substrings": [
+    "/.ssh/",
+    "/.ssh",
+    "/.aws/",
+    "/.gnupg/",
+    "/.codex/auth",
+    "/.codex/config.toml",
+    "/.gemini/config/config.json",
+    "/.gemini/config/projects/",
+    "/.agents/hooks.json",
+    "/.gemini/antigravity/plugin_data",
+    "/appdata/local/programs/antigravity",
+    "/appdata/roaming/antigravity",
+    "/windows/",
+    "/program files",
+    "/programdata/",
+    "/plugins/auto-review-guardian/"
+  ],
+  "gdocs_confirm_subcommands": [
+    "delete",
+    "delete-doc",
+    "delete-tab",
+    "delete-comment",
+    "clear",
+    "share"
+  ],
+  "gdrive_confirm_subcommands": [
+    "delete",
+    "empty-trash",
+    "share",
+    "unshare"
+  ],
+  "gmail_confirm_subcommands": [
+    "send",
+    "reply",
+    "forward",
+    "send-with-attachment",
+    "send-draft",
+    "react",
+    "trash",
+    "delete-draft",
+    "delete",
+    "batch-delete"
+  ],
+  "gcalendar_confirm_subcommands": [
+    "delete",
+    "rsvp",
+    "move"
+  ],
+  "mcp_confirm_tool_regex": "(?i)(delete|remove|cancel-events|restore-version|drop)",
+  "ssh_remote_confirm_regex": "(?i)(\\b(rmdir|mkfs|dd\\s+if=|reboot|shutdown|poweroff|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-z]*f[a-z]*)\\b|\\s-delete\\b)",
+  "confirm_if_raw_regex": [
+    {
+      "pattern": "(?i)(\\bformat(\\.com)?\\s+[a-z]:|\\bformat-volume\\b|\\b(diskpart|bcdedit|cipher\\s+/w|vssadmin\\s+delete|stop-computer|restart-computer)\\b)",
+      "decision": "deny",
+      "reason": "Blocked destructive disk/system administration command."
+    },
+    {
+      "pattern": "(?i)\\b(reg\\s+(delete|add)|sc(\\.exe)?\\s+(create|config|delete|stop)|schtasks\\s+/(create|delete|change)|new-scheduledtask|set-mppreference|netsh\\s+advfirewall|takeown|icacls)\\b",
+      "decision": "force_ask",
+      "reason": "System service, scheduled task, ACL, or registry change requires confirmation."
+    },
+    {
+      "pattern": "(?i)(powershell|pwsh).*\\s-(e|enc|encodedcommand)\\b",
+      "decision": "force_ask",
+      "reason": "Encoded PowerShell command requires explicit confirmation."
+    },
+    {
+      "pattern": "(?i)\\bgit\\s+(push\\s+[^\\n]*(--force|-f\\b|--force-with-lease)|reset\\s+--hard|clean\\s+-[a-z]*f)\\b",
+      "decision": "force_ask",
+      "reason": "Destructive or force-push Git operation requires confirmation."
+    },
+    {
+      "pattern": "(?i)(?:(?:^|[\\s\"'=/\\\\])(?:\\.ssh|\\.aws|\\.gnupg|\\.codex[/\\\\](?:auth|config\\.toml)|\\.env(?!\\.example\\b|\\.sample\\b|\\.template\\b)(?:\\.[a-z0-9_-]+)?(?=$|[\\s\"';|&]))|\\.gemini[/\\\\]config[/\\\\](?:hooks|config)\\.json|\\.agents[/\\\\]hooks\\.json|(?:^|[/\\\\\"'\\s])(?:antigravity_guardian\\.py|guardian_policy\\.json)\\b)",
+      "decision": "force_ask",
+      "reason": "Touches sensitive credentials, .env files, or Guardian/Antigravity config."
+    },
+    {
+      "pattern": "(?i)\\bshutil\\.rmtree\\b",
+      "decision": "force_ask",
+      "reason": "Inline recursive directory deletion (shutil.rmtree) requires confirmation."
+    }
+  ],
+  "safe_tmp_delete_roots": [
+    "E:/Project/_tmp"
+  ],
+  "default_unknown_command_decision": "allow",
+  "ai_reviewer": {
+    "mode": "none",
+    "http_api": {
+      "provider": "openai_compatible",
+      "endpoint": "",
+      "model": "gemini-3.5-flash-lite",
+      "api_key_env": "GUARDIAN_API_KEY",
+      "timeout_sec": 8
+    },
+    "codex_cli": {
+      "command": "codex",
+      "model": "",
+      "timeout_sec": 15
+    },
+    "fail_decision": "force_ask",
+    "policy_prompt": "Approve safe readonly, --help, workspace edits on E:/D:, and routine gdocs/gdrive syncs aligned with the user prompt. Require force_ask for irreversible deletions, outbound emails, credential reads, external sharing, or system-wide changes."
+  },
+  "safe_tmp_dir_names": [
+    "_tmp",
+    ".tmp",
+    "_work",
+    ".work",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "tmp",
+    "temp"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "local-storage-rules",
+  "displayName": "Local Storage & Disk Guardrails",
+  "version": "1.0.0",
+  "logo": "assets/logo.svg",
+  "description": "Always-on global rule enforcing that working files, temporary scratch scripts, caches, and build outputs are written strictly to data drives (E: or D:) rather than filling up the Windows C: system drive.",
+  "suggestedPrompts": [
+    "检查当前工作区命令是否已将临时目录重定向到非 C 盘",
+    "在当前数据盘工作区创建 _tmp 目录用于存放临时评测脚本与中间产物",
+    "根据我的磁盘盘符自定义 local-storage-rules 的目标数据盘设置"
+  ],
+  "author": {
+    "name": "lenfgh",
+    "url": "https://github.com/lenfgh"
+  },
+  "homepage": "https://github.com/lenfgh/AntiGravity-Skills",
+  "repository": "https://github.com/lenfgh/AntiGravity-Skills"
+}

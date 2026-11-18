@@ -1,0 +1,18 @@
+{
+  "name": "doc-viewer",
+  "displayName": "Document Viewer",
+  "version": "1.0.0",
+  "logo": "assets/logo.svg",
+  "description": "Side-pane document and file viewer for Antigravity: previews DOCX, PDF, XLSX/CSV, PPTX, EPUB, ODT/ODP, RTF, Markdown, Jupyter Notebooks, SQLite, ZIP archives, media, fonts, and source code.",
+  "suggestedPrompts": [
+    "在侧边栏打开当前工作区里的 DOCX 或 PDF 文档",
+    "在侧边栏预览工作区里的表格（XLSX / CSV）或幻灯片（PPTX）",
+    "打开 Document Viewer 浏览本项目的所有文档与数据文件"
+  ],
+  "author": {
+    "name": "lenfgh",
+    "url": "https://github.com/lenfgh"
+  },
+  "homepage": "https://github.com/lenfgh/AntiGravity-Skills",
+  "repository": "https://github.com/lenfgh/AntiGravity-Skills"
+}

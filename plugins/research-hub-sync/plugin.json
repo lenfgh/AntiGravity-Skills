@@ -1,0 +1,18 @@
+{
+  "name": "research-hub-sync",
+  "displayName": "Research_Hub 3-Party Sync",
+  "version": "1.0.0",
+  "logo": "assets/logo.svg",
+  "description": "Cross-agent synchronization protocol, global trigger rules, and AST-aware <500KB CodeSnapshot bundler connecting local workspaces with Google Drive Research_Hub (01_Logbook, 02_Studio, 03_CodeSnapshot) across Antigravity, Codex, ChatGPT, and Gemini.",
+  "suggestedPrompts": [
+    "继续当前方案（先拉取 02_Studio 最新看板版本号并核对范围）",
+    "同步云端：把刚核实通过的实验指标与评测口径回写到 01_Logbook",
+    "用 pack_codesnapshot.py 打包一份小于 500KB 的 03_CodeSnapshot.md 供架构评审"
+  ],
+  "author": {
+    "name": "lenfgh",
+    "url": "https://github.com/lenfgh"
+  },
+  "homepage": "https://github.com/lenfgh/AntiGravity-Skills",
+  "repository": "https://github.com/lenfgh/AntiGravity-Skills"
+}
