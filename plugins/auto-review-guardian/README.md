@@ -1,25 +1,25 @@
 # Auto-Review Security Guardian (`auto-review-guardian`)
 
-受 Codex `auto_review` 启发、专为 **Google Antigravity** 打造的 `PreToolUse` 生命周期安全守卫插件（Hook）。在开启高效率自动执行（Turbo / Eager）模式的同时，实现**“日常只读与工作区内开发 0 打扰秒放行，高危破坏/外发/越权改配置 100% 强制弹窗确认”**。
+面向 Google Antigravity 的 `PreToolUse` 生命周期安全审查钩子（Hook）。在开启自动执行命令（Turbo / Eager）模式时，在工具真正执行前对 `run_command`、文件写入与 MCP 调用做规则分级审查（纯 Python 标准库实现，单次判定通常 `< 10 ms`）。
 
-## 🛡️ 分级防护矩阵
+## 默认规则分级
 
-| 操作类别 | 示例命令 / 工具调用 | Guardian 决策 |
+| 类别 | 匹配的典型操作 | 处理决策 |
 | :--- | :--- | :--- |
-| **安全只读与 `--help` 探测** | `git status/diff/log`, `rg`, `Get-ChildItem`, `gdocs readonly read`, `gmail readonly search`, 任意 `--help` | ✅ `allow`（静默秒过） |
-| **活跃工作区与允许目录写入** | 当前打开的工作区（`workspacePaths`）、配置的 `E:/Project`、`D:/`、`~/.gemini/config/plugins/*` 普通文件读写，及安全 `_tmp` / `_work` 清理 | ✅ `allow`（支持 NTFS 软链接/Junction 真实路径解析与 PowerShell 变量追踪） |
-| **毁灭性磁盘/系统级破坏** | `format D:`, `diskpart`, `bcdedit`, `vssadmin delete`, `Stop-Computer` | 🚫 `deny`（直接硬拦截） |
-| **破坏性删除与强推代码** | 非临时目录 `rm -rf` / `Remove-Item -Recurse`、`shutil.rmtree`、`git push --force`、`git reset --hard`、`git clean -fd` | ⚠️ `force_ask`（强制人工确认） |
-| **外发动作与云端高危变更** | `gmail mutate send/reply/delete`、`gdrive delete/share`、`gdocs delete/share`、Notion `delete-pages` MCP、远程 SSH `rm -rf` / `reboot` | ⚠️ `force_ask`（草稿 `create-draft` 放行，真发送必问） |
-| **敏感凭据与守卫自保护** | 读写 `.ssh`、`.aws`、`.gnupg`、`.env`、`.codex/auth.json`、`config.json`、`hooks.json` 或尝试篡改 `antigravity_guardian.py` 自身 | ⚠️ `force_ask`（防越权逃逸） |
+| **只读与帮助查询** | `git status/diff/log`、`rg`、`Get-ChildItem`、`gdocs/gdrive/gmail/gcalendar readonly ...`、常见 CLI 的 `--help` / `--version` | `allow`（直接放行） |
+| **工作区与白名单目录写入** | 当前打开的工作区（`workspacePaths`）、`guardian_policy.json` 中配置的 `allowed_write_roots`，以及安全临时目录（`_tmp`、`_work` 等）清理 | `allow`（支持解析 NTFS Junction 软链接与基础 PowerShell 变量路径） |
+| **高危系统/磁盘破坏** | `format D:`、`diskpart`、`bcdedit`、`vssadmin delete`、`Stop-Computer` | `deny`（直接拒绝） |
+| **非临时目录递归删除与 Git 强改** | 非临时目录的 `rm -rf` / `Remove-Item -Recurse`、`shutil.rmtree`、`git push --force`、`git reset --hard`、`git clean -fd` | `force_ask`（要求人工确认） |
+| **对外发送与云端删除/共享** | `gmail mutate send/reply/delete`（仅创建草稿 `create-draft` 放行）、`gdrive/gdocs delete|share`、Notion 删除类 MCP 工具、远程 SSH `rm -rf` / `reboot` | `force_ask`（要求人工确认） |
+| **敏感凭据与配置自保护** | 访问 `.ssh`、`.aws`、`.gnupg`、`.env`、`.codex/auth.json`，或修改 `config.json`、`hooks.json`、`antigravity_guardian.py`、`guardian_policy.json` | `force_ask`（要求人工确认） |
 
-此外还预置了可选的 **Tier-2 AI 复核接口**（支持配置 OpenAI 兼容 HTTP API 或 `codex` CLI 对复杂未知命令做二次语义审查）以及毫秒级耗时的 JSONL 审计日志（`~/.gemini/antigravity/logs/guardian_audit.jsonl`）。
+此外，`guardian_policy.json` 中预留了可选的 `ai_reviewer`（Tier-2 二次审查，支持配置 OpenAI 兼容 HTTP 接口或调用 `codex` CLI）以及 JSONL 审计日志输出（默认路径 `~/.gemini/antigravity/logs/guardian_audit.jsonl`，置空可关闭）。
 
-## ⚙️ 安装与自定义配置
+## 安装与配置说明
 
-1. **Python 环境**：需系统 `PATH` 中有 `python`（Python 3.10+，零第三方库依赖，纯标准库实现，单次判定耗时 `< 10 ms`）。若你的 Python 不在系统默认 `PATH` 中，可编辑 `hooks.json` 将 `"python"` 替换为解释器绝对路径。
-2. **自定义白名单目录**：编辑 [`scripts/guardian_policy.json`](./scripts/guardian_policy.json) 中的 `allowed_write_roots` 与 `safe_tmp_delete_roots`（支持 `~/` 主目录自动展开）。
-3. **运行内置单元测试验证策略**：
+1. **Python 环境**：默认通过系统 `PATH` 中的 `python` 运行（需 Python 3.10+）。若默认 `python` 不在系统 `PATH` 中，可编辑 `hooks.json` 将 `"python"` 改为解释器完整路径。
+2. **修改允许写入的目录**：编辑 [`scripts/guardian_policy.json`](./scripts/guardian_policy.json) 中的 `allowed_write_roots` 与 `safe_tmp_delete_roots`（支持 `~/` 主目录自动展开）。
+3. **运行单元测试**：修改策略或脚本后，可运行内置单元测试验证规则行为：
    ```bash
    python -B -m unittest discover -s plugins/auto-review-guardian/scripts -p "test_*.py" -v
    ```

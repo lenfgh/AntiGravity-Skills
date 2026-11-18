@@ -19,7 +19,7 @@ Usage:
   bash ./install.sh --list
 
 Options:
-  --all                 Install all 6 plugins
+  --all                 Install all plugins
   --plugin <names>      Comma-separated plugin names to install
   --link                Symlink plugins instead of copying (live updates on git pull)
   --codex-skills        Also copy bundled SKILL.md folders into ~/.codex/skills/

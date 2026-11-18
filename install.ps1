@@ -3,7 +3,7 @@
     Installer for AntiGravity-Skills plugins (Windows PowerShell).
 
 .EXAMPLE
-    # Install all 6 plugins into ~/.gemini/config/plugins (and install doc-viewer npm deps)
+    # Install all plugins into ~/.gemini/config/plugins (and install doc-viewer npm deps)
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -All
 
     # Install selected plugins only

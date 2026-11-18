@@ -1,27 +1,35 @@
-# Research_Hub 3-Party Cloud Sync (`research-hub-sync`)
+# Research_Hub 3-Party Sync (`research-hub-sync`)
 
-打通 **本地工程 Agent（Antigravity / Codex）** 与 **云端深度推理模型（ChatGPT / Gemini Web + Google Drive）** 的三方协同协议与工具链。解决多工具切换时的上下文割裂、旧指标误用、RAG 切片丢失全局调用链，以及重复上传大文件耗尽代理流量等核心痛点。
+用于在本地开发工具（Antigravity、Codex）与云端对话环境（ChatGPT、Gemini Web + Google Drive）之间同步项目状态与代码上下文的规则、技能与打包脚本。
 
-## 🏗️ 三件套云端固定文档架构
+## 文档分工约定
 
-为每个在研项目在 Google Drive `Research_Hub/<ProjectKey>/` 下建立三个固定文档（ID 绑定在项目根目录 `AGENTS.md` 与总表 `REGISTRY.md` 中）：
+每个项目在 Google Drive 对应目录下维护三个固定文档，并在本地项目 `AGENTS.md` 或总表 `REGISTRY.md` 中记录其 ID：
 
-1. **`01_Logbook`（Google Doc · 实验与核验事实台账）**：
-   - 仅记录**已核实通过的实验指标、精确评测分母/样本量、关键失败根因与旧结论废止声明**（按日期倒序追加，拒绝日常 debug 噪音）。
-2. **`02_Studio`（Google Doc · 跨端方案对焦看板）**：
-   - 顶部常驻 5 行精简看板（`vYYYYMMDD-N` 版本号、当前待解问题、已选定方案、验收条件、下一棒交接）。在网页端与 ChatGPT/Gemini 讨论定稿后，回本地对 Antigravity 说一句 **“继续当前方案”** 即可无缝拉取执行。
-3. **`[Project]_03_CodeSnapshot.md`（`< 500 KB` 单文件代码快照）**：
-   - 由随附脚本 `scripts/pack_codesnapshot.py` 一键生成：包含目录树 + 核心源码全文 + 超预算文件自动降级为 Python AST 类/函数签名摘要，让网页端大模型一次看清完整真实接口。
+1. **`01_Logbook`（Google Doc）**：按日期倒序记录已核实的实验结果、样本量/评测分母、关键失败原因及旧结论更替说明，不记录日常零碎调试过程。
+2. **`02_Studio`（Google Doc）**：顶部保留 5 行概要表（看板版本号 `vYYYYMMDD-N`、当前待解问题、已选定方案、验收条件、下一步交接），用于跨端对齐当前执行方案。
+3. **`[Project]_03_CodeSnapshot.md`（`< 500 KB` 单文件代码快照）**：由 `scripts/pack_codesnapshot.py` 生成，包含精简目录树与核心源码；超出体积预算的 Python 文件自动退化为 AST 类与函数签名摘要，便于直接上传到网页端做代码结构评审。
 
-## 🚀 快速上手
+## 配置与准备
 
-1. **前置插件**：在 Antigravity 插件市场启用官方 `Google Docs` (`gdocs`) 与 `Google Drive` (`gdrive`) 插件并完成账号登录。
-2. **配置绑定**：参考 [`examples/REGISTRY.example.md`](./examples/REGISTRY.example.md) 与 [`examples/projects.example.json`](./examples/projects.example.json) 填入你自己的 Google Doc ID（**无需修改任何插件源码**）。
-3. **日常口令**：
-   - 开工拉取：`“继续当前方案”` / `“接手 Studio”`（Agent 会先读取 `02_Studio` 并在首行汇报看板版本号）
-   - 里程碑回写：`“同步云端”`（Agent 自动按倒序模板将新核实结果同步至 `01_Logbook` 或更新 `02_Studio`）
-   - 打包代码快照：
-     ```bash
-     python ~/.gemini/config/plugins/research-hub-sync/scripts/pack_codesnapshot.py \
-       --project MyProject --root /path/to/repo --focus src/core tests
-     ```
+1. **启用 Google Workspace 插件**：在 Antigravity 中安装并登录官方 `Google Docs` (`gdocs`) 与 `Google Drive` (`gdrive`) 插件。
+2. **绑定文档 ID**：参考 [`examples/REGISTRY.example.md`](./examples/REGISTRY.example.md) 在本地工作区建立路由表，或在项目 `AGENTS.md` 顶部记录对应的 `Drive Folder ID`、`01_Logbook` 与 `02_Studio` Doc ID；如需为 `pack_codesnapshot.py` 配置固定预设，可参考 [`examples/projects.example.json`](./examples/projects.example.json)。
+
+## 使用方法
+
+### 1. 对话触发指令
+- **拉取当前方案**：输入 `“继续当前方案”` 或 `“接手 Studio”`，Agent 会先读取 `02_Studio` 顶部看板并在回复首行注明当前看板版本号，再按约定范围执行。
+- **里程碑同步**：实验结果核实后输入 `“同步”` 或 `“同步云端”`，Agent 会将新增实验记录按模板写入 `01_Logbook`，或在方案变更时更新 `02_Studio` 版本号。
+
+### 2. 生成代码快照 (`pack_codesnapshot.py`)
+无需配置文件，可直接指定仓库根目录与优先打包的子目录：
+
+```bash
+python ~/.gemini/config/plugins/research-hub-sync/scripts/pack_codesnapshot.py \
+  --project MyProject \
+  --root /path/to/repo \
+  --focus src/core src/cli tests \
+  --out /path/to/repo/_tmp/MyProject_03_CodeSnapshot.md
+```
+
+若已配置 Google Drive 目标目录或文件 ID，可附加 `--upload`（配合 `--folder-id <ID>` 或 `--file-id <ID>`，或通过 `--config projects.json` 读取预设）直接上传更新至云端。

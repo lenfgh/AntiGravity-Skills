@@ -1,16 +1,17 @@
 # Local Storage & Disk Guardrails (`local-storage-rules`)
 
-专为 Windows 多盘工作站（系统盘 `C:` 容量有限 + 数据盘 `D:` / `E:` 大容量 NVMe）设计的全局常驻规则插件（`rules/AGENTS.md`）。
+面向 Windows 多盘环境（系统盘 `C:` 容量较小、数据盘 `D:` / `E:` 存放项目）的全局常驻规则插件（`rules/AGENTS.md`）。
 
-## 💡 解决什么痛点？
+## 规则内容
 
-AI 编程与科研 Agent 在高频执行任务时，默认会把临时 Python 脚本、PDF/PPT 渲染缓存、`%TEMP%` 编译产物以及会话 `scratch/` 目录写入 `C:\Users\<User>\...`，极易在数天内塞满系统盘。
+启用插件后，Agent 在会话中默认遵循以下约束：
 
-启用本插件后，Agent 会在每一轮会话自动遵循以下硬约束：
-1. **严禁向 `C:` 盘写入任何工作文件、临时脚本（Scratch）、缓存、日志或构建产物**（覆盖默认的 `brain/<id>/scratch/` 习惯，自动改用数据盘工作区内的 `_tmp/` 目录）。
-2. **自动重定向 CLI 临时目录**：在运行会产生大体积中间文件的包管理器、编译器或渲染管线时，主动将 `TEMP` / `TMP` 指向 `E:` 或 `D:`。
-3. **保留必要例外**：不影响 Antigravity IDE 原生右侧 Artifact 面板所需的轻量级 `.md` 文档渲染。
+1. **禁止在 `C:` 盘写入工作与临时文件**：不在 `C:` 盘创建项目产物、临时测试脚本、缓存、日志或渲染中间文件；不使用默认的 `C:\Users\<User>\.gemini\...\scratch\` 存放临时脚本，统一改用数据盘工作区内的 `_tmp/` 或 `.tmp/` 目录，并在任务结束后清理临时脚本。
+2. **重定向命令行临时目录**：运行会产生较大临时文件的构建、包管理或文档渲染命令时，将 `TEMP` / `TMP` 指向 `E:` 或 `D:` 盘目录。
+3. **保留的例外情况**：
+   - Antigravity IDE 右侧 Artifact 面板展示所需的 `.md` 文档（位于 `brain/<conversation-id>/*.md`）。
+   - 用户明确指定并同意修改的 `C:` 盘全局配置文件。
 
-## ⚙️ 自定义你的目标盘符
+## 自定义盘符
 
-如果你的主力数据盘是 `D:`、`F:`，或 Linux 挂载盘 `/mnt/data`，只需安装后编辑 `plugins/local-storage-rules/rules/AGENTS.md` 中的盘符说明即可立即生效（搭配 `auto-review-guardian` 插件更可在工具执行层实现物理拦截确认！）。
+如果你的数据盘盘符不是 `E:` / `D:`（例如 `F:` 盘或 Linux 挂载目录 `/mnt/data`），直接编辑 [`rules/AGENTS.md`](./rules/AGENTS.md) 中的目标路径说明即可。若希望在工具执行层对越界写入做强制拦截确认，可配合本仓库中的 [`auto-review-guardian`](../auto-review-guardian/README.md) 插件一起使用。
