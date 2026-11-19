@@ -1,7 +1,7 @@
 {
   "name": "doc-viewer",
   "displayName": "Document Viewer",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "logo": "assets/logo.svg",
   "description": "Side-pane document and file viewer for Antigravity: previews DOCX, PDF, XLSX/CSV, PPTX, EPUB, ODT/ODP, RTF, Markdown, Jupyter Notebooks, SQLite, ZIP archives, media, fonts, and source code.",
   "suggestedPrompts": [

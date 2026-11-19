@@ -275,14 +275,17 @@ function searchWorkspaceTree(roots, query, category = 'all', maxResults = 300) {
 }
 
 function registerStaticAssets() {
-  app.page('/', () => readFileSync(join(PUBLIC_DIR, 'index.html'), 'utf-8'));
+  app.page('/', () => new Response(readFileSync(join(PUBLIC_DIR, 'index.html'), 'utf-8'), {
+    contentType: 'text/html; charset=utf-8',
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+  }));
   app.api('/styles.css', () => new Response(readFileSync(join(PUBLIC_DIR, 'styles.css'), 'utf-8'), {
     contentType: 'text/css; charset=utf-8',
-    headers: { 'Access-Control-Allow-Origin': '*' },
+    headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   }), 'GET');
   app.api('/app.js', () => new Response(readFileSync(join(PUBLIC_DIR, 'app.js'), 'utf-8'), {
     contentType: 'application/javascript; charset=utf-8',
-    headers: { 'Access-Control-Allow-Origin': '*' },
+    headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   }), 'GET');
 
   const serveFile = (route, filePath, contentType) => {
@@ -451,20 +454,32 @@ app.api('/api/tree', (data) => {
 app.api('/api/target', (data) => {
   const convId = sanitizeConvId(data.conversationId || app.config.conversationId);
   const stateDir = getStateDir();
-  const candidates = [];
-  if (convId) candidates.push(join(stateDir, `${convId}.json`));
-  candidates.push(join(stateDir, 'latest.json'));
+  const serverNow = Date.now();
 
-  for (const file of candidates) {
-    if (!existsSync(file)) continue;
+  const tryRead = (file, requireMatchConvId) => {
+    if (!existsSync(file)) return null;
     try {
       const target = JSON.parse(readFileSync(file, 'utf-8'));
-      if (target?.path && existsSync(target.path)) {
-        return { target };
+      if (!target?.path || !existsSync(target.path)) return null;
+      if (requireMatchConvId) {
+        if (!target.conversationId || target.conversationId !== requireMatchConvId) return null;
+      } else if (target.conversationId) {
+        return null;
       }
-    } catch {}
+      return target;
+    } catch {
+      return null;
+    }
+  };
+
+  if (convId) {
+    // Strictly scoped to this conversation so another conversation's latest.json never leaks in.
+    const target = tryRead(join(stateDir, `${convId}.json`), convId);
+    return { target, serverNow };
   }
-  return { target: null };
+
+  const target = tryRead(join(stateDir, 'latest.json'), '');
+  return { target, serverNow };
 }, 'POST');
 
 app.api('/api/preview', async (data) => {
@@ -487,6 +502,7 @@ app.api('/api/preview', async (data) => {
   const fileName = basename(resolved);
   const ext = extname(fileName).toLowerCase();
   const kind = classifyExtension(fileName);
+  console.log(`[preview] source=${String(data.source || 'ui')} kind=${kind} path=${resolved}`);
 
   if (kind === 'sqlite') {
     const meta = parseSqliteMeta(resolved);
@@ -581,6 +597,69 @@ app.api('/api/upload-preview', async (data) => {
   }
   const payload = await renderBufferPreview(buf, fileName, data);
   return { path: `dropped://${fileName}`, dropped: true, ...payload };
+}, 'POST');
+
+const BLOCKED_EXEC_EXTS = new Set([
+  '.exe', '.msi', '.msp', '.bat', '.cmd', '.com', '.scr', '.pif',
+  '.vbs', '.vbe', '.wsf', '.wsh', '.hta', '.reg', '.cpl',
+]);
+
+app.api('/api/open-default', async (data) => {
+  const convId = sanitizeConvId(data.conversationId || app.config.conversationId);
+  const resolved = resolveFilePath(data.path, convId, data.workspaceUris);
+  if (!resolved) {
+    return new Response(JSON.stringify({ error: '找不到对应本地文件' }), {
+      contentType: 'application/json',
+      status: 404,
+    });
+  }
+  const st = statSync(resolved);
+  if (!st.isFile()) {
+    return new Response(JSON.stringify({ error: '目标路径不是文件' }), {
+      contentType: 'application/json',
+      status: 400,
+    });
+  }
+  const ext = extname(resolved).toLowerCase();
+  if (BLOCKED_EXEC_EXTS.has(ext)) {
+    return new Response(JSON.stringify({ error: `出于安全保护，不支持直接运行 ${ext} 程序/脚本，请点右侧文件夹图标在资源管理器中查看` }), {
+      contentType: 'application/json',
+      status: 400,
+    });
+  }
+
+  try {
+    await new Promise((resolvePromise, rejectPromise) => {
+      if (process.platform === 'win32') {
+        execFile(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-WindowStyle',
+            'Hidden',
+            '-Command',
+            'Invoke-Item -LiteralPath $env:DV_OPEN_PATH -ErrorAction Stop',
+          ],
+          { env: { ...process.env, DV_OPEN_PATH: resolved }, windowsHide: true, timeout: 8000 },
+          (err, _stdout, stderr) => {
+            if (err) rejectPromise(new Error((stderr || err.message || '调用系统默认程序失败').trim()));
+            else resolvePromise();
+          },
+        );
+      } else if (process.platform === 'darwin') {
+        execFile('open', [resolved], (err) => (err ? rejectPromise(err) : resolvePromise()));
+      } else {
+        execFile('xdg-open', [resolved], (err) => (err ? rejectPromise(err) : resolvePromise()));
+      }
+    });
+    return { ok: true, path: resolved };
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message || '调用系统默认程序失败' }), {
+      contentType: 'application/json',
+      status: 500,
+    });
+  }
 }, 'POST');
 
 app.api('/api/reveal', (data) => {

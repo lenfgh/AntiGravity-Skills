@@ -139,8 +139,12 @@ html, body {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   flex: 0 0 auto;
+}
+@media (max-width: 440px) {
+  #btn-open-default span { display: none; }
+  #btn-open-default { padding: 0 6px; }
 }
 
 .badge {
@@ -356,6 +360,7 @@ html, body {
   min-height: 0;
   position: relative;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .welcome {

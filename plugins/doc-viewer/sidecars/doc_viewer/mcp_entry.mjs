@@ -189,7 +189,6 @@ function handleToolCall(name, args, convId) {
       conversationId: convId || null,
     };
     writeJsonAtomic(targetFile, payload);
-    writeJsonAtomic(join(stateDir, 'latest.json'), payload);
     return {
       content: [{
         type: 'text',
@@ -220,13 +219,10 @@ function handleToolCall(name, args, convId) {
 
   if (name === 'get_viewer_state') {
     let state = null;
-    for (const candidate of [targetFile, join(stateDir, 'latest.json')]) {
-      if (existsSync(candidate)) {
-        try {
-          state = JSON.parse(readFileSync(candidate, 'utf-8'));
-          break;
-        } catch {}
-      }
+    if (existsSync(targetFile)) {
+      try {
+        state = JSON.parse(readFileSync(targetFile, 'utf-8'));
+      } catch {}
     }
     return { content: [{ type: 'text', text: JSON.stringify({ state }) }] };
   }

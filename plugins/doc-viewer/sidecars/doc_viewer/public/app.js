@@ -44,6 +44,7 @@
     btnPathGo: $('btn-path-go'),
     btnPickFile: $('btn-pick-file'),
     nativeFileInput: $('native-file-input'),
+    btnOpenDefault: $('btn-open-default'),
     btnReveal: $('btn-reveal'),
     btnRefresh: $('btn-refresh'),
     btnSnip: $('btn-snip'),
@@ -108,6 +109,9 @@
     droppedBuffer: null,
     activeObjectUrls: [],
     lastTargetSeq: 0,
+    lockedToFileTab: false,
+    userOpened: false,
+    openToken: 0,
     pdfDoc: null,
     pdfObserver: null,
     pdfZoom: 'fit',
@@ -239,6 +243,7 @@
     el.fileTitle.textContent = fileName || '未打开文件';
     el.filePill.title = pathStr || fileName || '';
     const isDiskFile = Boolean(pathStr && !pathStr.startsWith('dropped://'));
+    el.btnOpenDefault?.classList.toggle('hidden', !isDiskFile);
     el.btnReveal.classList.toggle('hidden', !isDiskFile);
     el.btnRefresh.classList.toggle('hidden', !pathStr);
     el.btnSnip.classList.toggle('hidden', !pathStr);
@@ -399,6 +404,12 @@
   // ---------- Open & Render Dispatcher ----------
   async function openPath(filePath, opts = {}) {
     if (!filePath) return;
+    const token = ++state.openToken;
+    if (!opts.fromTarget) {
+      state.userOpened = true;
+      state.lastTargetSeq = Math.max(state.lastTargetSeq, Date.now());
+      syncLatestTargetSeq();
+    }
     state.droppedFile = null;
     state.droppedBuffer = null;
     if (!opts.keepArchive) state.archiveEntry = null;
@@ -414,6 +425,7 @@
     try {
       const data = await apiJson('/api/preview', {
         path: filePath,
+        source: opts.source || 'ui',
         archiveEntry: state.archiveEntry,
         sheetIndex: opts.sheetIndex,
         page: opts.page,
@@ -421,9 +433,11 @@
         chapterIndex: opts.chapterIndex,
         table: opts.table,
       });
+      if (token !== state.openToken) return;
       state.currentData = data;
       renderLoadedPayload(data);
     } catch (err) {
+      if (token !== state.openToken) return;
       setHeader(filePath.split(/[/\\]/).pop(), 'empty', filePath);
       showError(err.message);
     }
@@ -431,10 +445,15 @@
 
   async function openLocalDroppedFile(file, opts = {}) {
     if (!file) return;
+    const token = ++state.openToken;
+    state.userOpened = true;
+    state.lastTargetSeq = Math.max(state.lastTargetSeq, Date.now());
+    syncLatestTargetSeq();
     cleanupActiveResources();
     toggleDrawer(false);
     state.droppedFile = file;
     const buf = await file.arrayBuffer();
+    if (token !== state.openToken) return;
     state.droppedBuffer = buf;
     state.currentPath = `dropped://${file.name}`;
     state.archiveEntry = opts.archiveEntry || null;
@@ -455,6 +474,7 @@
           : ['.ttf', '.otf', '.woff', '.woff2'].includes(ext) ? 'font'
           : 'image';
         const data = { kind, ext, fileName: file.name, path: state.currentPath, size: file.size, binary: true, dropped: true };
+        if (token !== state.openToken) return;
         state.currentData = data;
         renderLoadedPayload(data);
         return;
@@ -478,9 +498,11 @@
         filter: opts.filter,
         chapterIndex: opts.chapterIndex,
       });
+      if (token !== state.openToken) return;
       state.currentData = data;
       renderLoadedPayload(data);
     } catch (err) {
+      if (token !== state.openToken) return;
       setHeader(file.name, 'empty', state.currentPath);
       showError(err.message);
     }
@@ -545,7 +567,15 @@
     if (k === 'video') return renderVideo(data, insideArchive);
     if (k === 'font') return renderFont(data, insideArchive);
     if (k === 'binary' || k === 'too_large') {
-      el.viewer.innerHTML = `<div class="status-box">${esc(data.error || data.note || '暂不支持预览此文件')}</div>`;
+      const canOpenLocal = Boolean(state.currentPath && !state.currentPath.startsWith('dropped://'));
+      el.viewer.innerHTML = `<div class="status-box">
+        <div>${esc(data.error || data.note || '暂不支持预览此文件')}</div>
+        ${canOpenLocal ? '<div style="margin-top:12px"><button id="btn-fallback-open-default" type="button" class="btn btn-primary">用系统默认应用打开</button></div>' : ''}
+      </div>`;
+      if (canOpenLocal) {
+        const fbBtn = $('btn-fallback-open-default');
+        if (fbBtn) fbBtn.onclick = openInSystemDefault;
+      }
       return;
     }
     return renderCode(data);
@@ -553,6 +583,7 @@
 
   // ---------- PDF Renderer ----------
   async function renderPdf(data, insideArchive) {
+    const token = state.openToken;
     el.subbar.classList.remove('hidden');
     el.subbar.innerHTML = `
       <button id="pdf-prev" class="btn btn-sm" type="button">上一页</button>
@@ -575,7 +606,9 @@
 
     try {
       const pdfjsLib = await loadPdfJs();
+      if (token !== state.openToken) return;
       const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+      if (token !== state.openToken) return;
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buf),
         cMapUrl: '/vendor/pdfjs/cmaps/',
@@ -585,6 +618,10 @@
         wasmUrl: '/vendor/pdfjs/wasm/',
       });
       const pdfDoc = await loadingTask.promise;
+      if (token !== state.openToken) {
+        try { pdfDoc.destroy(); } catch {}
+        return;
+      }
       state.pdfDoc = pdfDoc;
       $('pdf-page-total').textContent = `/ ${pdfDoc.numPages}`;
       $('pdf-page-num').max = String(pdfDoc.numPages);
@@ -776,6 +813,7 @@
 
       await renderAllPages();
     } catch (err) {
+      if (token !== state.openToken) return;
       showError(`PDF 渲染失败: ${err.message}`);
     }
   }
@@ -821,8 +859,10 @@
       el.viewer.innerHTML = `<div class="docx-layout-stage"><div id="docx-spacer" style="position:relative;margin:0 auto;"><div id="docx-host" class="docx-scale-outer"></div></div></div>`;
       const host = $('docx-host');
       const spacer = $('docx-spacer');
+      const token = state.openToken;
       try {
         const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+        if (token !== state.openToken) return;
         await window.docx.renderAsync(buf, host, null, {
           inWrapper: true,
           ignoreWidth: false,
@@ -830,17 +870,21 @@
           breakPages: true,
           useBase64URL: true,
         });
+        if (token !== state.openToken) return;
+
+        // Measure natural dimensions once while unscaled to avoid ResizeObserver transform thrashing
+        host.style.transform = 'none';
+        const pageEl = host.querySelector('section.docx') || host;
+        const naturalW = Math.max(pageEl.scrollWidth, host.scrollWidth, 600);
+        const naturalH = Math.max(host.scrollHeight, 200);
+        host.style.width = `${naturalW}px`;
 
         const applyScale = () => {
+          if (!host.isConnected || !spacer.isConnected) return;
           const prevScrollRatio = el.stage.scrollHeight > 0 ? el.stage.scrollTop / el.stage.scrollHeight : 0;
-          host.style.transform = 'none';
-          const pageEl = host.querySelector('section.docx') || host;
-          const naturalW = Math.max(pageEl.scrollWidth, host.scrollWidth, 600);
-          const naturalH = host.scrollHeight;
           const avail = Math.max(240, el.stage.clientWidth - 24);
           const scale = state.docxZoom === 'fit' ? Math.min(1, avail / naturalW) : state.docxZoom;
           lastAppliedScale = scale;
-          host.style.width = `${naturalW}px`;
           host.style.transform = `scale(${scale})`;
           spacer.style.width = `${Math.floor(naturalW * scale)}px`;
           spacer.style.height = `${Math.floor(naturalH * scale)}px`;
@@ -852,8 +896,25 @@
         };
         applyScaleRef = applyScale;
         applyScale();
-        state.docxResizeObserver = new ResizeObserver(applyScale);
+
+        let lastObsW = el.stage.clientWidth;
+        let docxRafId = 0;
+        if (state.docxResizeObserver) state.docxResizeObserver.disconnect();
+        state.docxResizeObserver = new ResizeObserver(() => {
+          if (state.docxZoom !== 'fit') return;
+          if (docxRafId) return;
+          docxRafId = requestAnimationFrame(() => {
+            docxRafId = 0;
+            const w = el.stage.clientWidth;
+            if (Math.abs(w - lastObsW) <= 1) return;
+            lastObsW = w;
+            applyScale();
+          });
+        });
         state.docxResizeObserver.observe(el.stage);
+        state.activeCleanups.push(() => {
+          if (docxRafId) cancelAnimationFrame(docxRafId);
+        });
         state.zoomHandler = (dir) => {
           const cur = state.docxZoom === 'fit' ? lastAppliedScale : state.docxZoom;
           state.docxZoom = Math.max(0.3, Math.min(3.5, cur * (dir > 0 ? 1.15 : 1 / 1.15)));
@@ -1247,10 +1308,25 @@
 
     const prevResize = state.docxResizeObserver;
     if (prevResize) prevResize.disconnect();
+    let lastImgObsW = el.stage.clientWidth;
+    let lastImgObsH = el.stage.clientHeight;
+    let imgRafId = 0;
     state.docxResizeObserver = new ResizeObserver(() => {
-      if (fit) apply();
+      if (!fit || imgRafId) return;
+      imgRafId = requestAnimationFrame(() => {
+        imgRafId = 0;
+        const w = el.stage.clientWidth;
+        const h = el.stage.clientHeight;
+        if (Math.abs(w - lastImgObsW) <= 1 && Math.abs(h - lastImgObsH) <= 1) return;
+        lastImgObsW = w;
+        lastImgObsH = h;
+        if (fit) apply();
+      });
     });
     state.docxResizeObserver.observe(el.stage);
+    state.activeCleanups.push(() => {
+      if (imgRafId) cancelAnimationFrame(imgRafId);
+    });
 
     $('img-fit').onclick = resetZoom;
     $('img-1x').onclick = () => { fit = false; zoom = 1; apply(); };
@@ -1455,6 +1531,7 @@
 
   // ---------- Media & Font Renderers ----------
   async function renderImage(data, insideArchive) {
+    const token = state.openToken;
     el.subbar.classList.remove('hidden');
     el.subbar.innerHTML = `
       <span class="seg">
@@ -1470,6 +1547,7 @@
       <span class="muted" style="font-size:11px">Ctrl+滚轮缩放 · 拖动平移</span>
     `;
     const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+    if (token !== state.openToken) return;
     const url = URL.createObjectURL(new Blob([buf]));
     state.activeObjectUrls.push(url);
     mountZoomableMedia({
@@ -1481,24 +1559,31 @@
   }
 
   async function renderAudio(data, insideArchive) {
+    const token = state.openToken;
     const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+    if (token !== state.openToken) return;
     const url = URL.createObjectURL(new Blob([buf]));
     state.activeObjectUrls.push(url);
     el.viewer.innerHTML = `<div class="media-stage"><div style="margin-bottom:10px;font-weight:500">${esc(data.fileName)}</div><audio controls src="${url}"></audio><div class="muted" style="margin-top:8px">${fmtSize(data.size)}</div></div>`;
   }
 
   async function renderVideo(data, insideArchive) {
+    const token = state.openToken;
     const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+    if (token !== state.openToken) return;
     const url = URL.createObjectURL(new Blob([buf]));
     state.activeObjectUrls.push(url);
     el.viewer.innerHTML = `<div class="media-stage"><video controls src="${url}"></video><div class="muted" style="margin-top:8px">${esc(data.fileName)} · ${fmtSize(data.size)}</div></div>`;
   }
 
   async function renderFont(data, insideArchive) {
+    const token = state.openToken;
     const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
+    if (token !== state.openToken) return;
     const fontName = `PreviewFont_${Date.now()}`;
     const ff = new FontFace(fontName, buf);
     await ff.load();
+    if (token !== state.openToken) return;
     document.fonts.add(ff);
     el.viewer.innerHTML = `
       <div class="font-preview">
@@ -2186,14 +2271,59 @@
   el.btnReqSendAll.onclick = () => deliverRequests([...state.requests], true);
 
   // ---------- Target polling (from MCP open_document tool) ----------
-  async function checkTarget() {
+  const INITIAL_TARGET_MAX_AGE_MS = 10 * 60 * 1000;
+  let targetSyncInFlight = false;
+
+  async function syncLatestTargetSeq() {
+    state.lastTargetSeq = Math.max(state.lastTargetSeq, Date.now());
+    if (targetSyncInFlight) return;
+    targetSyncInFlight = true;
     try {
       const res = await apiJson('/api/target');
-      const t = res.target;
-      if (t?.path && t.seq && t.seq > state.lastTargetSeq) {
-        state.lastTargetSeq = t.seq;
-        await openPath(t.path, { mode: t.mode });
+      const seq = Number(res?.target?.seq) || 0;
+      const serverNow = Number(res?.serverNow) || 0;
+      state.lastTargetSeq = Math.max(state.lastTargetSeq, seq, serverNow);
+    } catch {
+      // ignore transient errors
+    } finally {
+      targetSyncInFlight = false;
+    }
+  }
+
+  async function checkTarget({ initial = false } = {}) {
+    if (state.lockedToFileTab) return;
+    if (initial && (state.userOpened || state.currentPath)) {
+      syncLatestTargetSeq();
+      return;
+    }
+    const tokenBefore = state.openToken;
+    try {
+      const res = await apiJson('/api/target');
+      if (state.lockedToFileTab) return;
+      const t = res?.target;
+      if (!t?.path || !t.seq) return;
+      // Client-side guard against cross-conversation leakage even before a sidecar restart
+      if (state.convId && t.conversationId && t.conversationId !== state.convId) return;
+      const tSeq = Number(t.seq) || 0;
+      if (!tSeq || tSeq <= state.lastTargetSeq) return;
+
+      // If the user opened another file while /api/target was in flight, record seq without hijacking
+      if (state.openToken !== tokenBefore) {
+        state.lastTargetSeq = Math.max(state.lastTargetSeq, tSeq);
+        return;
       }
+
+      if (initial) {
+        state.lastTargetSeq = Math.max(state.lastTargetSeq, tSeq);
+        if (state.userOpened || state.currentPath) return;
+        const now = Number(res?.serverNow) || Date.now();
+        if (now - tSeq > INITIAL_TARGET_MAX_AGE_MS) return;
+        await openPath(t.path, { mode: t.mode, fromTarget: true, source: 'target-init' });
+        return;
+      }
+
+      state.lastTargetSeq = Math.max(state.lastTargetSeq, tSeq);
+      await openPath(t.path, { mode: t.mode, fromTarget: true, source: 'target-poll' });
     } catch {}
   }
 
@@ -2230,7 +2360,7 @@
       return;
     }
     const item = e.target.closest('button[data-path]');
-    if (item) openPath(item.dataset.path);
+    if (item) openPath(item.dataset.path, { source: 'tree' });
   };
 
   const togglePathBar = (show) => {
@@ -2242,16 +2372,33 @@
   el.filePill.onclick = () => togglePathBar();
   el.btnPathGo.onclick = () => {
     const v = el.pathInput.value.trim().replace(/^["']|["']$/g, '');
-    if (v) openPath(v);
+    if (v) openPath(v, { source: 'pathbar' });
   };
   el.pathInput.onkeydown = (e) => {
     if (e.key === 'Enter') el.btnPathGo.click();
   };
 
+  let openingDefault = false;
+  async function openInSystemDefault() {
+    if (!state.currentPath || state.currentPath.startsWith('dropped://') || openingDefault) return;
+    openingDefault = true;
+    if (el.btnOpenDefault) el.btnOpenDefault.disabled = true;
+    try {
+      await apiJson('/api/open-default', { path: state.currentPath });
+      showToast('已调用系统默认应用打开');
+    } catch (err) {
+      showToast(`无法用默认应用打开: ${err.message}`);
+    } finally {
+      openingDefault = false;
+      if (el.btnOpenDefault) el.btnOpenDefault.disabled = false;
+    }
+  }
+
   el.btnRefresh.onclick = () => {
     if (state.droppedFile) openLocalDroppedFile(state.droppedFile);
     else if (state.currentPath) openPath(state.currentPath, { keepArchive: Boolean(state.archiveEntry) });
   };
+  if (el.btnOpenDefault) el.btnOpenDefault.onclick = openInSystemDefault;
   el.btnReveal.onclick = () => {
     if (state.currentPath && !state.currentPath.startsWith('dropped://')) {
       apiJson('/api/reveal', { path: state.currentPath }).catch(() => {});
@@ -2295,6 +2442,11 @@
       setSnipMode(!state.snipMode);
       return;
     }
+    if (e.altKey && e.key.toLowerCase() === 'o' && state.currentPath && !state.currentPath.startsWith('dropped://')) {
+      e.preventDefault();
+      openInSystemDefault();
+      return;
+    }
     const inEditable = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
     if ((e.ctrlKey || e.metaKey) && !inEditable && state.currentPath) {
       if (e.key === '=' || e.key === '+') {
@@ -2320,57 +2472,138 @@
   }, true);
 
   // ---------- Host File-Open Messages & Boot ----------
-  function extractFileArg(obj) {
-    if (!obj || typeof obj !== 'object') return '';
-    for (const k of ['file', 'path', 'filepath', 'filePath', 'uri', 'fileUri', 'file_uri', 'file_path', 'target']) {
-      const v = obj[k];
-      if (typeof v === 'string' && v.trim()) return v.trim();
+  const KNOWN_FILE_KEYS = [
+    'file', 'path', 'filepath', 'filePath', 'file_path',
+    'uri', 'fileUri', 'file_uri', 'documentUri', 'docUri',
+    'activeFile', 'target', 'src', 'resource',
+  ];
+
+  function isUsableFileString(v) {
+    if (typeof v !== 'string') return false;
+    const s = v.trim();
+    if (!s) return false;
+    if (/^(https?|javascript|data|blob):/i.test(s)) return false;
+    return true;
+  }
+
+  function isAbsolutePathLike(p) {
+    return /^(file:\/\/|[A-Za-z]:[/\\]|\/)/.test(String(p || '').trim());
+  }
+
+  function extractFileFromLocation() {
+    const skipKeys = new Set([
+      'token', '_sidecar_token', 'conversationId', 'conversation_id',
+      'tab', 'sid', 'theme', 'locale', 'view',
+    ]);
+    const sp = new URLSearchParams(location.search);
+    for (const k of KNOWN_FILE_KEYS) {
+      const v = sp.get(k);
+      if (isUsableFileString(v)) return v.trim();
     }
-    if (obj.payload && typeof obj.payload === 'object') return extractFileArg(obj.payload);
-    if (obj.data && typeof obj.data === 'object') return extractFileArg(obj.data);
+    for (const [k, v] of sp.entries()) {
+      if (skipKeys.has(k)) continue;
+      if (isUsableFileString(v) && (v.includes('/') || v.includes('\\') || v.startsWith('file:'))) {
+        return v.trim();
+      }
+    }
+    const rawHash = (location.hash || '').replace(/^#/, '').trim();
+    if (rawHash) {
+      if (rawHash.includes('=')) {
+        const hp = new URLSearchParams(rawHash.replace(/^\?/, ''));
+        for (const k of KNOWN_FILE_KEYS) {
+          const v = hp.get(k);
+          if (isUsableFileString(v)) return v.trim();
+        }
+      } else if (isUsableFileString(rawHash) && (rawHash.includes('/') || rawHash.includes('\\') || rawHash.startsWith('file:'))) {
+        try { return decodeURIComponent(rawHash); } catch { return rawHash; }
+      }
+    }
     return '';
   }
+
+  function extractFileArg(obj, depth = 0) {
+    if (!obj || typeof obj !== 'object' || depth > 4) return '';
+    for (const k of KNOWN_FILE_KEYS) {
+      const v = obj[k];
+      if (isUsableFileString(v)) return v.trim();
+    }
+    if (obj.payload && typeof obj.payload === 'object') return extractFileArg(obj.payload, depth + 1);
+    if (obj.data && typeof obj.data === 'object') return extractFileArg(obj.data, depth + 1);
+    return '';
+  }
+
+  const IGNORED_MESSAGE_TYPES = new Set([
+    'theme-change',
+    'workspace-change',
+    'sidecar-key-event',
+    'add-artifact-comment',
+    'toggle-aux-pane',
+    'toggle-conversation',
+    'request-credential-refresh',
+  ]);
 
   window.addEventListener('message', (event) => {
     const d = event.data;
     if (!d || typeof d !== 'object') return;
-    if (d.type === 'theme-change' || d.type === 'workspace-change' || d.type === 'sidecar-key-event') return;
+    if (d.type && IGNORED_MESSAGE_TYPES.has(d.type)) return;
     const p = extractFileArg(d);
-    if (p) openPath(p);
+    if (p && p !== state.currentPath) {
+      state.lockedToFileTab = true;
+      state.userOpened = true;
+      state.lastTargetSeq = Math.max(state.lastTargetSeq, Date.now());
+      openPath(p, { source: `msg:${String(d.type || 'untyped').slice(0, 32)}` });
+    }
   });
 
   window.addEventListener('error', (e) => {
-    if (e?.message) showError(`页面脚本异常: ${e.message}`);
+    const msg = String(e?.message || '');
+    if (!msg || /ResizeObserver loop/i.test(msg)) return;
+    if (!state.currentData) {
+      showError(`页面脚本异常: ${msg}`);
+    } else {
+      console.warn('[doc-viewer] non-fatal error:', msg);
+    }
   });
 
   async function boot() {
-    if (window.sidecar?.getWorkspaceUris) {
-      state.workspaceUris = await window.sidecar.getWorkspaceUris();
-      window.sidecar.onWorkspaceChange?.((uris) => {
-        state.workspaceUris = uris;
-        state.currentDir = null;
-        loadDir(null);
-      });
+    const qFile = extractFileFromLocation();
+    if (qFile) {
+      state.lockedToFileTab = true;
+      state.userOpened = true;
+      state.lastTargetSeq = Math.max(state.lastTargetSeq, Date.now());
     }
-    const sp = new URLSearchParams(location.search);
-    let qFile = sp.get('file') || sp.get('path') || sp.get('filepath') || sp.get('filePath') || sp.get('uri') || sp.get('fileUri') || sp.get('target');
-    if (!qFile) {
-      for (const [k, v] of sp.entries()) {
-        if (['token', '_sidecar_token', 'conversationId', 'conversation_id', 'tab', 'sid'].includes(k)) continue;
-        if (v && (v.includes('/') || v.includes('\\') || v.startsWith('file:'))) {
-          qFile = v;
-          break;
+
+    let wsBootLoaded = false;
+    let wsReadyPromise = Promise.resolve();
+    if (window.sidecar?.getWorkspaceUris) {
+      window.sidecar.onWorkspaceChange?.((uris) => {
+        state.workspaceUris = uris || [];
+        if (wsBootLoaded) {
+          state.currentDir = null;
+          loadDir(null);
         }
+      });
+      wsReadyPromise = Promise.race([
+        window.sidecar.getWorkspaceUris().then((uris) => { state.workspaceUris = uris || []; }),
+        new Promise((resolve) => setTimeout(resolve, 1200)),
+      ]);
+    }
+
+    if (qFile) {
+      if (!isAbsolutePathLike(qFile)) await wsReadyPromise;
+      await openPath(qFile, { source: 'query' });
+      await wsReadyPromise;
+    } else {
+      await wsReadyPromise;
+      if (!state.lockedToFileTab && !state.userOpened) {
+        await checkTarget({ initial: true });
       }
     }
-    if (qFile) {
-      await openPath(qFile);
-    } else {
-      await checkTarget();
-    }
+
+    wsBootLoaded = true;
     await loadDir(null);
     setInterval(() => {
-      if (!document.hidden) checkTarget();
+      if (!document.hidden && !state.lockedToFileTab) checkTarget();
     }, 1500);
   }
   boot();
