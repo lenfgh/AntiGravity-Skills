@@ -1182,6 +1182,14 @@ def evaluate_run_command(payload: dict[str, Any], policy: dict[str, Any]) -> dic
             "reason": "All command segments matched safe Tier-1 rules.",
         }
 
+    tamper_pattern = str(policy.get("config_tamper_regex") or "")
+    if tamper_pattern and re.search(tamper_pattern, command):
+        return {
+            "decision": "force_ask",
+            "tier": "rule_redline",
+            "reason": "Command may modify Guardian or global agent configuration.",
+        }
+
     return resolve_uncertain_command(payload, policy)
 
 

@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "audit_log_path": "~/.gemini/antigravity/logs/guardian_audit.jsonl",
   "allowed_write_roots": [
     "E:/Project",
@@ -94,9 +94,9 @@
       "reason": "Destructive or force-push Git operation requires confirmation."
     },
     {
-      "pattern": "(?i)(?:(?:^|[\\s\"'=/\\\\])(?:\\.ssh|\\.aws|\\.gnupg|\\.codex[/\\\\](?:auth|config\\.toml)|\\.env(?!\\.example\\b|\\.sample\\b|\\.template\\b)(?:\\.[a-z0-9_-]+)?(?=$|[\\s\"';|&]))|\\.gemini[/\\\\]config[/\\\\](?:hooks|config)\\.json|\\.agents[/\\\\]hooks\\.json|(?:^|[/\\\\\"'\\s])(?:antigravity_guardian\\.py|guardian_policy\\.json)\\b)",
+      "pattern": "(?i)(?:^|[\\s\\\"'=/\\\\])(?:\\.ssh|\\.aws|\\.gnupg|\\.codex[/\\\\]auth|\\.env(?!\\.example\\b|\\.sample\\b|\\.template\\b)(?:\\.[a-z0-9_-]+)?(?=$|[\\s\\\"';|&]))",
       "decision": "force_ask",
-      "reason": "Touches sensitive credentials, .env files, or Guardian/Antigravity config."
+      "reason": "Touches sensitive credentials or .env files."
     },
     {
       "pattern": "(?i)\\bshutil\\.rmtree\\b",
@@ -136,5 +136,6 @@
     ".mypy_cache",
     "tmp",
     "temp"
-  ]
+  ],
+  "config_tamper_regex": "(?i)(?:\\.gemini[/\\\\]config[/\\\\](?:hooks|config|mcp_config)\\.json|\\.codex[/\\\\]config\\.toml|\\.agents[/\\\\]hooks\\.json|(?:^|[/\\\\\\\"'\\s])(?:antigravity_guardian\\.py|guardian_policy\\.json|guardian_audit\\.jsonl)\\b|[/\\\\]plugins[/\\\\]auto-review-guardian[/\\\\])"
 }

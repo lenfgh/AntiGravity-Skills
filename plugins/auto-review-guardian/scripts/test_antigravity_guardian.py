@@ -94,7 +94,7 @@ class GuardianV2Tests(unittest.TestCase):
         self.assertEqual(self.write_payload("write_file", "notes/summary.md")["decision"], "allow")
         # Chained `cd` to C: followed by relative redirect -> force_ask!
         self.assertEqual(
-            self.run_cmd_payload(f"cd C:/Users/Public/Desktop; echo pwned > evil.txt")["decision"],
+            self.run_cmd_payload("cd C:/Users/Public/Desktop; echo pwned > evil.txt")["decision"],
             "force_ask",
         )
         # Chained `cd` into _tmp followed by relative Remove-Item -> allow
@@ -301,6 +301,34 @@ class GuardianV2Tests(unittest.TestCase):
             self.write_payload("write_file", "C:\\Users\\Public\\Desktop\\test.txt")["decision"],
             "force_ask",
         )
+
+
+
+    def test_readonly_inspection_of_guardian_and_config_is_allowed_while_writes_and_secrets_ask(self) -> None:
+        self.assertEqual(
+            self.run_cmd_payload(
+                f'Select-String -Path "{HOME_WIN}\\.gemini\\config\\plugins\\auto-review-guardian\\scripts\\antigravity_guardian.py" -Pattern "policy"'
+            )["decision"],
+            "allow",
+        )
+        self.assertEqual(
+            self.run_cmd_payload(f'Get-Content "{HOME_WIN}\\.gemini\\config\\config.json"')["decision"],
+            "allow",
+        )
+        # Modifying Guardian via Python or Set-Content MUST still ask
+        self.assertEqual(
+            self.run_cmd_payload(
+                f'python -c "open(r\\"{HOME_WIN}\\.gemini\\config\\plugins\\auto-review-guardian\\scripts\\antigravity_guardian.py\\", \\"a\\")"'
+            )["decision"],
+            "force_ask",
+        )
+        self.assertEqual(
+            self.run_cmd_payload(f'Set-Content -Path "{HOME_WIN}\\.gemini\\config\\config.json" -Value "{{}}"')["decision"],
+            "force_ask",
+        )
+        # Reading secrets (.env / .ssh / .codex/auth) MUST still ask even with Get-Content
+        self.assertEqual(self.run_cmd_payload("Get-Content .env.local")["decision"], "force_ask")
+        self.assertEqual(self.run_cmd_payload(f'Get-Content "{HOME_WIN}\\.codex\\auth.json"')["decision"], "force_ask")
 
 
 if __name__ == "__main__":
