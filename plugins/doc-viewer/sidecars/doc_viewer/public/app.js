@@ -124,6 +124,11 @@
     queueExpanded: false,
     pendingSelection: null,
     pendingComposer: null,
+    zoomHandler: null,
+    zoomReset: null,
+    genericZoom: 1,
+    pdfZoomTimer: null,
+    activeCleanups: [],
   };
 
   // ---------- Theme sync ----------
@@ -208,6 +213,15 @@
       state.docxResizeObserver.disconnect();
       state.docxResizeObserver = null;
     }
+    clearTimeout(state.pdfZoomTimer);
+    state.pdfZoomTimer = null;
+    while (state.activeCleanups.length) {
+      try { state.activeCleanups.pop()(); } catch {}
+    }
+    state.zoomHandler = null;
+    state.zoomReset = null;
+    state.genericZoom = 1;
+    el.viewer.style.zoom = '';
     el.selectionBar.classList.add('hidden');
   }
 
@@ -546,9 +560,10 @@
       <span id="pdf-page-total" class="muted">/ ?</span>
       <button id="pdf-next" class="btn btn-sm" type="button">下一页</button>
       <span class="seg">
-        <button id="pdf-z-out" type="button">-</button>
-        <button id="pdf-z-fit" type="button" class="${state.pdfZoom === 'fit' ? 'active' : ''}">适应宽</button>
-        <button id="pdf-z-in" type="button">+</button>
+        <button id="pdf-z-out" type="button" title="缩小 (Ctrl+-)">-</button>
+        <span id="pdf-z-pct" class="zoom-readout">100%</span>
+        <button id="pdf-z-fit" type="button" class="${state.pdfZoom === 'fit' ? 'active' : ''}" title="适应宽度 (Ctrl+0)">适应宽</button>
+        <button id="pdf-z-in" type="button" title="放大 (Ctrl++)">+</button>
       </span>
       <button id="pdf-outline-btn" class="btn btn-sm hidden" type="button">目录</button>
       <input id="pdf-search" type="search" placeholder="PDF内搜索..." style="flex:1 1 110px;max-width:170px">
@@ -687,22 +702,45 @@
         }
       };
 
+      const updatePdfPct = () => {
+        const sc = computeScale();
+        const pctEl = $('pdf-z-pct');
+        if (pctEl) pctEl.textContent = `${Math.round(sc * 100)}%`;
+      };
+
+      const stepPdfZoom = (factor, debounced = false) => {
+        const cur = state.pdfZoom === 'fit' ? computeScale() : state.pdfZoom;
+        const next = Math.max(0.35, Math.min(4, cur * factor));
+        state.pdfZoom = next;
+        $('pdf-z-fit')?.classList.remove('active');
+        updatePdfPct();
+        if (debounced) {
+          clearTimeout(state.pdfZoomTimer);
+          state.pdfZoomTimer = setTimeout(() => {
+            if (state.pdfDoc === pdfDoc) renderAllPages();
+          }, 150);
+        } else {
+          renderAllPages();
+        }
+      };
+
+      const resetPdfZoom = () => {
+        state.pdfZoom = 'fit';
+        $('pdf-z-fit')?.classList.add('active');
+        updatePdfPct();
+        renderAllPages();
+      };
+
+      state.zoomHandler = (dir, _cx, _cy, viaWheel) => stepPdfZoom(dir > 0 ? 1.15 : 1 / 1.15, Boolean(viaWheel));
+      state.zoomReset = resetPdfZoom;
+
       $('pdf-prev').onclick = () => jumpToPdfPage(Number($('pdf-page-num').value) - 1);
       $('pdf-next').onclick = () => jumpToPdfPage(Number($('pdf-page-num').value) + 1);
       $('pdf-page-num').onchange = () => jumpToPdfPage($('pdf-page-num').value);
-      $('pdf-z-fit').onclick = () => { state.pdfZoom = 'fit'; $('pdf-z-fit').classList.add('active'); renderAllPages(); };
-      $('pdf-z-in').onclick = () => {
-        const cur = state.pdfZoom === 'fit' ? computeScale() : state.pdfZoom;
-        state.pdfZoom = Math.min(3.5, cur * 1.2);
-        $('pdf-z-fit').classList.remove('active');
-        renderAllPages();
-      };
-      $('pdf-z-out').onclick = () => {
-        const cur = state.pdfZoom === 'fit' ? computeScale() : state.pdfZoom;
-        state.pdfZoom = Math.max(0.35, cur / 1.2);
-        $('pdf-z-fit').classList.remove('active');
-        renderAllPages();
-      };
+      $('pdf-z-fit').onclick = resetPdfZoom;
+      $('pdf-z-in').onclick = () => stepPdfZoom(1.2, false);
+      $('pdf-z-out').onclick = () => stepPdfZoom(1 / 1.2, false);
+      updatePdfPct();
 
       let searchMatches = [];
       let searchIdx = -1;
@@ -751,19 +789,26 @@
         <button id="docx-mode-reader" type="button" class="${state.docxMode === 'reader' ? 'active' : ''}">阅读视图</button>
       </div>
       <span id="docx-zoom-ctrl" class="seg ${state.docxMode === 'reader' ? 'hidden' : ''}">
-        <button id="docx-z-out" type="button">-</button>
-        <button id="docx-z-fit" type="button" class="${state.docxZoom === 'fit' ? 'active' : ''}">适应宽</button>
-        <button id="docx-z-in" type="button">+</button>
+        <button id="docx-z-out" type="button" title="缩小 (Ctrl+-)">-</button>
+        <span id="docx-z-pct" class="zoom-readout">100%</span>
+        <button id="docx-z-fit" type="button" class="${state.docxZoom === 'fit' ? 'active' : ''}" title="适应宽度 (Ctrl+0)">适应宽</button>
+        <button id="docx-z-in" type="button" title="放大 (Ctrl++)">+</button>
       </span>
       <span class="spacer"></span>
       <span class="muted" style="font-size:11px">${esc(fmtSize(data.size))}</span>
     `;
+
+    let applyScaleRef = null;
+    let lastAppliedScale = 1;
 
     const drawReader = () => {
       if (state.docxResizeObserver) {
         state.docxResizeObserver.disconnect();
         state.docxResizeObserver = null;
       }
+      applyScaleRef = null;
+      state.zoomHandler = null;
+      state.zoomReset = null;
       el.viewer.innerHTML = `<article class="prose-body">${data.readerHtml || ''}</article>`;
       renderPins();
     };
@@ -787,20 +832,39 @@
         });
 
         const applyScale = () => {
+          const prevScrollRatio = el.stage.scrollHeight > 0 ? el.stage.scrollTop / el.stage.scrollHeight : 0;
           host.style.transform = 'none';
           const pageEl = host.querySelector('section.docx') || host;
           const naturalW = Math.max(pageEl.scrollWidth, host.scrollWidth, 600);
           const naturalH = host.scrollHeight;
           const avail = Math.max(240, el.stage.clientWidth - 24);
           const scale = state.docxZoom === 'fit' ? Math.min(1, avail / naturalW) : state.docxZoom;
+          lastAppliedScale = scale;
           host.style.width = `${naturalW}px`;
           host.style.transform = `scale(${scale})`;
           spacer.style.width = `${Math.floor(naturalW * scale)}px`;
           spacer.style.height = `${Math.floor(naturalH * scale)}px`;
+          const pctEl = $('docx-z-pct');
+          if (pctEl) pctEl.textContent = `${Math.round(scale * 100)}%`;
+          if (prevScrollRatio > 0) {
+            el.stage.scrollTop = Math.round(prevScrollRatio * el.stage.scrollHeight);
+          }
         };
+        applyScaleRef = applyScale;
         applyScale();
         state.docxResizeObserver = new ResizeObserver(applyScale);
         state.docxResizeObserver.observe(el.stage);
+        state.zoomHandler = (dir) => {
+          const cur = state.docxZoom === 'fit' ? lastAppliedScale : state.docxZoom;
+          state.docxZoom = Math.max(0.3, Math.min(3.5, cur * (dir > 0 ? 1.15 : 1 / 1.15)));
+          $('docx-z-fit')?.classList.remove('active');
+          applyScaleRef?.();
+        };
+        state.zoomReset = () => {
+          state.docxZoom = 'fit';
+          $('docx-z-fit')?.classList.add('active');
+          applyScaleRef?.();
+        };
         renderPins();
       } catch (err) {
         drawReader();
@@ -825,16 +889,25 @@
       $('docx-zoom-ctrl').classList.add('hidden');
       drawReader();
     };
-    $('docx-z-fit').onclick = () => { state.docxZoom = 'fit'; $('docx-z-fit').classList.add('active'); drawLayout(); };
+    $('docx-z-fit').onclick = () => {
+      state.docxZoom = 'fit';
+      $('docx-z-fit').classList.add('active');
+      if (applyScaleRef) applyScaleRef();
+      else drawLayout();
+    };
     $('docx-z-in').onclick = () => {
-      state.docxZoom = state.docxZoom === 'fit' ? 1 : Math.min(2.5, state.docxZoom * 1.15);
+      const cur = state.docxZoom === 'fit' ? lastAppliedScale : state.docxZoom;
+      state.docxZoom = Math.min(3.5, cur * 1.15);
       $('docx-z-fit').classList.remove('active');
-      drawLayout();
+      if (applyScaleRef) applyScaleRef();
+      else drawLayout();
     };
     $('docx-z-out').onclick = () => {
-      state.docxZoom = state.docxZoom === 'fit' ? 0.7 : Math.max(0.35, state.docxZoom / 1.15);
+      const cur = state.docxZoom === 'fit' ? lastAppliedScale : state.docxZoom;
+      state.docxZoom = Math.max(0.3, cur / 1.15);
       $('docx-z-fit').classList.remove('active');
-      drawLayout();
+      if (applyScaleRef) applyScaleRef();
+      else drawLayout();
     };
 
     if (state.docxMode === 'layout') await drawLayout();
@@ -1064,29 +1137,179 @@
     draw();
   }
 
+  function mountZoomableMedia({ url, alt, sizeBytes, checker, onCheckerChange }) {
+    let isChecker = checker;
+    let fit = true;
+    let zoom = 1;
+    let naturalW = 0;
+    let naturalH = 0;
+
+    el.viewer.innerHTML = `<div id="img-stage" class="media-stage ${isChecker ? 'checker' : ''}"><img id="img-el" src="${url}" alt="${esc(alt)}"></div>`;
+    const stageEl = $('img-stage');
+    const img = $('img-el');
+
+    const computeFitScale = () => {
+      if (!naturalW || !naturalH) return 1;
+      const availW = Math.max(120, el.stage.clientWidth - 32);
+      const availH = Math.max(120, el.stage.clientHeight - 32);
+      return Math.min(1, availW / naturalW, availH / naturalH);
+    };
+
+    const updateReadout = (effectiveScale) => {
+      const pct = $('img-pct');
+      if (pct) pct.textContent = `${Math.round(effectiveScale * 100)}%`;
+      $('img-fit')?.classList.toggle('active', fit);
+      $('img-1x')?.classList.toggle('active', !fit && Math.abs(effectiveScale - 1) < 0.02);
+      const canPan = !fit && (img.offsetWidth > el.stage.clientWidth - 8 || img.offsetHeight > el.stage.clientHeight - 8);
+      stageEl.classList.toggle('pannable', canPan);
+    };
+
+    const apply = (anchorClientX = null, anchorClientY = null) => {
+      if (!naturalW) return;
+      let prevRatioX = null;
+      let prevRatioY = null;
+      let stageRect = null;
+      if (anchorClientX !== null && anchorClientY !== null) {
+        const ir = img.getBoundingClientRect();
+        stageRect = el.stage.getBoundingClientRect();
+        if (ir.width > 0 && ir.height > 0) {
+          prevRatioX = (anchorClientX - ir.left) / ir.width;
+          prevRatioY = (anchorClientY - ir.top) / ir.height;
+        }
+      }
+
+      const effectiveScale = fit ? computeFitScale() : zoom;
+      img.style.width = `${Math.max(16, Math.round(naturalW * effectiveScale))}px`;
+      img.style.height = 'auto';
+      updateReadout(effectiveScale);
+
+      if (prevRatioX !== null && stageRect) {
+        const newIr = img.getBoundingClientRect();
+        const targetClientX = newIr.left + prevRatioX * newIr.width;
+        const targetClientY = newIr.top + prevRatioY * newIr.height;
+        el.stage.scrollLeft += targetClientX - anchorClientX;
+        el.stage.scrollTop += targetClientY - anchorClientY;
+      }
+    };
+
+    const stepZoom = (dir, cx = null, cy = null) => {
+      const cur = fit ? computeFitScale() : zoom;
+      fit = false;
+      zoom = Math.max(0.1, Math.min(12, cur * (dir > 0 ? 1.15 : 1 / 1.15)));
+      apply(cx, cy);
+    };
+
+    const resetZoom = () => {
+      fit = true;
+      apply();
+    };
+
+    img.onload = () => {
+      naturalW = img.naturalWidth || img.width || 600;
+      naturalH = img.naturalHeight || img.height || 400;
+      const dim = $('img-dim');
+      if (dim) dim.textContent = `${naturalW} × ${naturalH} px${sizeBytes ? ` · ${fmtSize(sizeBytes)}` : ''}`;
+      apply();
+      renderPins();
+    };
+
+    img.ondblclick = () => {
+      if (fit) { fit = false; zoom = 1; }
+      else { fit = true; }
+      apply();
+    };
+
+    // Drag-to-pan when zoomed
+    let panStart = null;
+    stageEl.onmousedown = (e) => {
+      if (e.button !== 0 || state.snipMode) return;
+      if (!stageEl.classList.contains('pannable')) return;
+      e.preventDefault();
+      panStart = { x: e.clientX, y: e.clientY, sl: el.stage.scrollLeft, st: el.stage.scrollTop };
+      stageEl.classList.add('panning');
+    };
+    const onPanMove = (e) => {
+      if (!panStart) return;
+      el.stage.scrollLeft = panStart.sl - (e.clientX - panStart.x);
+      el.stage.scrollTop = panStart.st - (e.clientY - panStart.y);
+    };
+    const onPanUp = () => {
+      if (!panStart) return;
+      panStart = null;
+      stageEl.classList.remove('panning');
+    };
+    window.addEventListener('mousemove', onPanMove);
+    window.addEventListener('mouseup', onPanUp);
+    state.activeCleanups.push(() => {
+      window.removeEventListener('mousemove', onPanMove);
+      window.removeEventListener('mouseup', onPanUp);
+    });
+
+    const prevResize = state.docxResizeObserver;
+    if (prevResize) prevResize.disconnect();
+    state.docxResizeObserver = new ResizeObserver(() => {
+      if (fit) apply();
+    });
+    state.docxResizeObserver.observe(el.stage);
+
+    $('img-fit').onclick = resetZoom;
+    $('img-1x').onclick = () => { fit = false; zoom = 1; apply(); };
+    $('img-in').onclick = () => stepZoom(1);
+    $('img-out').onclick = () => stepZoom(-1);
+    $('img-bg').onclick = () => {
+      isChecker = !isChecker;
+      stageEl.classList.toggle('checker', isChecker);
+      onCheckerChange?.(isChecker);
+    };
+
+    state.zoomHandler = (dir, cx, cy) => stepZoom(dir, cx, cy);
+    state.zoomReset = resetZoom;
+  }
+
   function renderSvg(data) {
     el.subbar.classList.remove('hidden');
     let checker = true;
-    el.subbar.innerHTML = `
-      <div class="seg">
-        <button id="svg-view" type="button" class="${!state.showSource ? 'active' : ''}">图形</button>
-        <button id="svg-src" type="button" class="${state.showSource ? 'active' : ''}">源码</button>
-      </div>
-      <button id="svg-bg" class="btn btn-sm" type="button">切换棋盘底</button>
-    `;
     const draw = () => {
       if (state.showSource) {
+        state.zoomHandler = null;
+        state.zoomReset = null;
+        el.subbar.innerHTML = `
+          <div class="seg">
+            <button id="svg-view" type="button">图形</button>
+            <button id="svg-src" type="button" class="active">源码</button>
+          </div>
+        `;
         renderHighlightedHtml(data.code.html, data.code.lines);
       } else {
+        el.subbar.innerHTML = `
+          <div class="seg">
+            <button id="svg-view" type="button" class="active">图形</button>
+            <button id="svg-src" type="button">源码</button>
+          </div>
+          <span class="seg">
+            <button id="img-out" type="button" title="缩小 (Ctrl+-)">-</button>
+            <span id="img-pct" class="zoom-readout">100%</span>
+            <button id="img-fit" type="button" class="active" title="适应窗口 (Ctrl+0)">适应</button>
+            <button id="img-1x" type="button">1:1</button>
+            <button id="img-in" type="button" title="放大 (Ctrl++)">+</button>
+          </span>
+          <button id="img-bg" class="btn btn-sm" type="button">棋盘底</button>
+          <span id="img-dim" class="muted"></span>
+        `;
         const blob = new Blob([data.svgContent], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
         state.activeObjectUrls.push(url);
-        el.viewer.innerHTML = `<div id="svg-stage" class="media-stage ${checker ? 'checker' : ''}"><img src="${url}" alt="SVG"></div>`;
+        mountZoomableMedia({
+          url,
+          alt: data.fileName || 'SVG',
+          sizeBytes: data.size,
+          checker,
+          onCheckerChange: (v) => { checker = v; },
+        });
       }
+      $('svg-view').onclick = () => { state.showSource = false; draw(); };
+      $('svg-src').onclick = () => { state.showSource = true; draw(); };
     };
-    $('svg-view').onclick = () => { state.showSource = false; $('svg-view').classList.add('active'); $('svg-src').classList.remove('active'); draw(); };
-    $('svg-src').onclick = () => { state.showSource = true; $('svg-src').classList.add('active'); $('svg-view').classList.remove('active'); draw(); };
-    $('svg-bg').onclick = () => { checker = !checker; $('svg-stage')?.classList.toggle('checker', checker); };
     draw();
   }
 
@@ -1233,42 +1456,28 @@
   // ---------- Media & Font Renderers ----------
   async function renderImage(data, insideArchive) {
     el.subbar.classList.remove('hidden');
-    let checker = true;
-    let zoom = 1;
-    let fit = true;
     el.subbar.innerHTML = `
       <span class="seg">
-        <button id="img-out" type="button">-</button>
-        <button id="img-fit" type="button" class="active">适应</button>
+        <button id="img-out" type="button" title="缩小 (Ctrl+-)">-</button>
+        <span id="img-pct" class="zoom-readout">100%</span>
+        <button id="img-fit" type="button" class="active" title="适应窗口 (Ctrl+0)">适应</button>
         <button id="img-1x" type="button">1:1</button>
-        <button id="img-in" type="button">+</button>
+        <button id="img-in" type="button" title="放大 (Ctrl++)">+</button>
       </span>
       <button id="img-bg" class="btn btn-sm" type="button">棋盘底</button>
       <span id="img-dim" class="muted"></span>
+      <span class="spacer"></span>
+      <span class="muted" style="font-size:11px">Ctrl+滚轮缩放 · 拖动平移</span>
     `;
     const buf = await apiRawBuffer(data.path, insideArchive ? data.archiveEntry : null);
     const url = URL.createObjectURL(new Blob([buf]));
     state.activeObjectUrls.push(url);
-    el.viewer.innerHTML = `<div id="img-stage" class="media-stage checker"><img id="img-el" src="${url}" alt="${esc(data.fileName)}"></div>`;
-    const img = $('img-el');
-    const apply = () => {
-      if (fit) {
-        img.style.maxWidth = '100%';
-        img.style.width = '';
-      } else {
-        img.style.maxWidth = 'none';
-        img.style.width = `${Math.round(img.naturalWidth * zoom)}px`;
-      }
-    };
-    img.onload = () => {
-      $('img-dim').textContent = `${img.naturalWidth} × ${img.naturalHeight} px · ${fmtSize(data.size)}`;
-      apply();
-    };
-    $('img-fit').onclick = () => { fit = true; $('img-fit').classList.add('active'); $('img-1x').classList.remove('active'); apply(); };
-    $('img-1x').onclick = () => { fit = false; zoom = 1; $('img-1x').classList.add('active'); $('img-fit').classList.remove('active'); apply(); };
-    $('img-in').onclick = () => { fit = false; zoom = Math.min(8, zoom * 1.25); $('img-fit').classList.remove('active'); apply(); };
-    $('img-out').onclick = () => { fit = false; zoom = Math.max(0.1, zoom / 1.25); $('img-fit').classList.remove('active'); apply(); };
-    $('img-bg').onclick = () => { checker = !checker; $('img-stage').classList.toggle('checker', checker); };
+    mountZoomableMedia({
+      url,
+      alt: data.fileName,
+      sizeBytes: data.size,
+      checker: true,
+    });
   }
 
   async function renderAudio(data, insideArchive) {
@@ -1791,11 +2000,47 @@
     }
   }
 
+  // Unified Ctrl+Wheel & Ctrl +/-/0 Zoom
+  function triggerZoom(dir, clientX = null, clientY = null, viaWheel = false) {
+    if (!state.currentPath) return;
+    if (state.zoomHandler) {
+      state.zoomHandler(dir, clientX, clientY, viaWheel);
+      return;
+    }
+    state.genericZoom = Math.max(0.6, Math.min(2.4, state.genericZoom * (dir > 0 ? 1.1 : 1 / 1.1)));
+    el.viewer.style.zoom = String(state.genericZoom);
+    showToast(`缩放 ${Math.round(state.genericZoom * 100)}%`, 900);
+  }
+
+  function triggerZoomReset() {
+    if (!state.currentPath) return;
+    if (state.zoomReset) {
+      state.zoomReset();
+      return;
+    }
+    state.genericZoom = 1;
+    el.viewer.style.zoom = '';
+    showToast('已重置缩放 (100%)', 900);
+  }
+
+  el.stage.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || !state.currentPath) return;
+    if (!el.drawer.classList.contains('hidden')) return;
+    e.preventDefault();
+    if (e.deltaY === 0) return;
+    triggerZoom(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY, true);
+  }, { passive: false });
+
   // Snip Layer Mouse Events
   let snipStart = null;
   el.snipLayer.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      if (e.deltaY !== 0) triggerZoom(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY, true);
+      return;
+    }
     el.stage.scrollBy(e.deltaX, e.deltaY);
-  }, { passive: true });
+  }, { passive: false });
 
   el.snipLayer.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -2050,11 +2295,29 @@
       setSnipMode(!state.snipMode);
       return;
     }
+    const inEditable = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+    if ((e.ctrlKey || e.metaKey) && !inEditable && state.currentPath) {
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        triggerZoom(1, null, null, false);
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        triggerZoom(-1, null, null, false);
+        return;
+      }
+      if (e.key === '0') {
+        e.preventDefault();
+        triggerZoomReset();
+        return;
+      }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       toggleDrawer(true);
     }
-  });
+  }, true);
 
   // ---------- Host File-Open Messages & Boot ----------
   function extractFileArg(obj) {

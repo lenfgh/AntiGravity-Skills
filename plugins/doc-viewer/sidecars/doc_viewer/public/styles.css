@@ -806,11 +806,15 @@ table.data-grid td.cell-selected {
 .media-stage {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
+  min-width: 100%;
   min-height: 100%;
+  width: max-content;
   padding: 16px;
 }
+.media-stage.pannable { cursor: grab; }
+.media-stage.panning { cursor: grabbing; user-select: none; }
 .media-stage.checker {
   background-image: linear-gradient(45deg, rgba(128,128,128,0.12) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(128,128,128,0.12) 25%, transparent 25%),
@@ -820,8 +824,23 @@ table.data-grid td.cell-selected {
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
 .media-stage img {
-  max-width: 100%;
+  display: block;
   box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.zoom-readout {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 22px;
+  font-family: var(--dv-mono);
+  font-size: 11px;
+  color: var(--dv-fg-2);
+  border-left: 1px solid var(--dv-border);
+  border-right: 1px solid var(--dv-border);
+  min-width: 44px;
+  justify-content: center;
 }
 .media-stage video { max-width: 100%; max-height: 80vh; border-radius: 8px; }
 .media-stage audio { width: min(100%, 420px); }
